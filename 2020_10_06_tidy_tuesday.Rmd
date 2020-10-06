@@ -1,0 +1,75 @@
+---
+title: "TidyTemplate"
+date: 2020-10-06
+output: html_output
+editor_options: 
+  chunk_output_type: console
+---
+
+# TidyTuesday
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, 
+                      warning = FALSE, message = FALSE,
+                      dpi = 180, fig.width = 8, fig.height = 5)
+
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+theme_set(theme_light())
+```
+
+# Load the weekly Data
+
+Dowload the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2020-09-22")
+peaks <- tt$peaks
+members <- tt$members
+expeditions <- tt$expeditions
+```
+
+
+```{r}
+members %>% 
+    group_by(year = 10*year%/%10) %>% 
+    summarise(died = mean(died),
+              succeed = mean(success)) %>% 
+    pivot_longer(died:succeed, names_to = "event", values_to = "avg") %>% 
+    ggplot(aes(year, avg, color = event)) +
+    geom_line(size = 1.5, alpha = 0.7) +
+    scale_y_continuous(labels = percent_format())
+```
+
+```{r}
+members %>% 
+    ggplot(aes(age)) +
+    geom_histogram()
+```
+
+```{r}
+members %>% 
+    group_by(age = 10*age%/%10) %>% 
+    count(age) %>% 
+    mutate(age = paste0(age, "-", age+9))
+```
+
+```{r}
+members %>% 
+    group_by(age = 10*age%/%10) %>% 
+    summarise(died = mean(died),
+              success = mean(success)) %>% 
+    pivot_longer(died:success, names_to = "event", values_to = "avg") %>% 
+    ggplot(aes(age, avg, color = event)) +
+    geom_line(size = 1.5, alpha = 0.4) +
+    scale_y_continuous(labels = percent_format())
+
+```
+
+```{r}
+
+```
+
