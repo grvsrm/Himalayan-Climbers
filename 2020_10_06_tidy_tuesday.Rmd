@@ -15,6 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, cache = TRUE,
                       dpi = 180, fig.width = 8, fig.height = 5)
 
 library(tidyverse)
+library(tidymodels)
 library(tidytuesdayR)
 library(scales)
 theme_set(theme_light())
@@ -69,7 +70,165 @@ members %>%
 
 ```
 
+### Lets build a model
+
+Lets create a dataframe to predict survival
 ```{r}
+members_df <- members %>% 
+    select(peak_id, year, season, sex, age, citizenship, hired, solo, oxygen_used, died) %>% 
+    filter(!is.na(sex), 
+           !is.na(citizenship)) %>%
+    mutate(died = case_when(died ~ "died",
+                            TRUE ~ "survived")) %>% 
+    mutate_if(is.character, factor) %>% 
+    mutate_if(is.logical, as.integer)
+```
+
+Lets craete a split
+```{r}
+set.seed(123)
+members_split <- members_df %>% 
+    initial_split(strata = died)
+
+member_train <- training(members_split)
+member_test <- testing(members_split)
+
+member_cv <- vfold_cv(member_train)
 
 ```
 
+lets create a recipe
+```{r}
+library(themis)
+
+members_recipe <- member_train %>% 
+    recipe(died ~.) %>% 
+    step_other(peak_id, citizenship) %>% 
+    step_knnimpute(age, neighbors = 5) %>% 
+    step_dummy(all_nominal(), -all_outcomes()) %>% 
+    step_smote(died)
+
+member_wf <- workflow() %>% 
+    add_recipe(members_recipe)
+```
+
+Lets create a model
+```{r}
+glm_spec <- logistic_reg() %>% 
+    set_engine(engine = "glm")
+
+rf_spec <- rand_forest() %>% 
+    set_engine(engine = "ranger") %>% 
+    set_mode(mode = "classification")
+
+```
+
+Lets run the models using workflow
+```{r}
+#doParallel::registerDoParallel()
+
+
+glm_res <- member_wf %>% 
+    add_model(glm_spec) %>% 
+    fit_resamples(
+        resamples = member_cv,
+        metrics = metric_set(roc_auc, accuracy, specificity, sensitivity, precision, recall),
+        control = control_resamples(save_pred = TRUE,
+                                    verbose = TRUE))
+glm_res
+```
+
+```{r}
+
+#doParallel::registerDoParallel()
+
+
+rf_res <- member_wf %>% 
+    add_model(rf_spec) %>% 
+    fit_resamples(
+        resamples = member_cv,
+        metrics = metric_set(roc_auc, accuracy, specificity, sensitivity, precision, recall),
+        control = control_resamples(save_pred = TRUE,
+                                    verbose = TRUE))
+
+rf_res
+```
+
+```{r}
+glm_res %>% 
+  mutate(model = "glm") %>% 
+  add_row(rf_res %>% 
+            mutate(model = "rf")) %>% 
+  unnest(.metrics) %>% 
+  ggplot(aes(id, .estimate, group = model, color = model)) +
+  geom_line(size = 1, alpha = 0.6) +
+  facet_wrap(~ .metric, scales = "free")
+```
+
+```{r}
+glm_res %>% collect_metrics()
+rf_res %>% collect_metrics()
+
+glm_res %>% 
+  conf_mat_resampled()
+
+rf_res %>% 
+  conf_mat_resampled()
+```
+
+```{r}
+member_final_model <- member_wf %>% 
+  add_model(rf_spec) %>% 
+  last_fit(members_split)
+```
+
+```{r}
+member_final_model %>% collect_metrics()
+```
+
+```{r}
+member_final_model %>% 
+  collect_predictions() %>% 
+  conf_mat(died, .pred_class)
+```
+
+```{r}
+member_final_model %>% 
+  pull(.workflow) %>% 
+  pluck(1)
+```
+
+Lets see logit model also
+```{r}
+member_glm_final <- member_wf %>% 
+  add_model(glm_spec) %>% 
+  last_fit(members_split)
+
+member_glm_final %>% collect_metrics()
+```
+
+```{r}
+member_glm_final %>% 
+  pull(.workflow) %>% 
+  pluck(1) %>% 
+  tidy(exponentiate = T) %>% 
+  knitr::kable()
+
+```
+
+```{r}
+member_glm_final %>% 
+  pull(.workflow) %>% 
+  pluck(1) %>% 
+  tidy(exponentiate = T) %>% 
+  filter(!term == "(Intercept)") %>% 
+  ggplot(aes(estimate,fct_reorder(term, estimate))) +
+  geom_point(size = 1.6) +
+  geom_errorbar(aes(xmin = estimate - std.error,
+                    xmax = estimate + std.error),
+                width = 0.2) +
+  geom_vline(xintercept = 0, size = 1, lty = 2, color = "pink")
+
+```
+
+End of script
