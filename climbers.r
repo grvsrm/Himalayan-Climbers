@@ -19,3 +19,7 @@ expeditions_raw %>%
     write_rds("expedition_raw.rds")
 
 # Transform the data (If needed)
+peaks_raw
+members_raw %>% select(expedition_id, member_id) %>% 
+    head(1)
+expeditions_raw
