@@ -19,3 +19,5 @@ expeditions_raw %>%
     write_rds("expedition_raw.rds")
 
 # Transform the data (If needed)
+peaks %>% 
+    count(climbing_status)
